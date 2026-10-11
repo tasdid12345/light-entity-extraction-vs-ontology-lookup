@@ -9,22 +9,51 @@ from sklearn.model_selection import KFold
 
 SEED = 42
 np.random.seed(SEED)
-API = "https://huggingface.co/api/datasets/species_800/parquet"
+# The canonical "species_800" id now lives under a user namespace on the Hub; try several ids.
+REPOS = ["spyysalo/species_800", "species_800", "bigbio/species_800"]
+HEADERS = {}
+if os.environ.get("HF_TOKEN"):
+    HEADERS["Authorization"] = "Bearer " + os.environ["HF_TOKEN"]
 
 
-def get(url):
-    """HTTP GET with timeout and exponential backoff on 429/5xx."""
-    for k in range(6):
+def get(url, tries=6):
+    """HTTP GET with timeout and exponential backoff on 429/5xx; fail fast on other 4xx."""
+    for k in range(tries):
         try:
-            r = requests.get(url, timeout=60)
+            r = requests.get(url, timeout=60, headers=HEADERS)
             if r.status_code == 429 or r.status_code >= 500:
                 raise requests.HTTPError(str(r.status_code))
-            r.raise_for_status()
+            if 400 <= r.status_code < 500:
+                print("client error", r.status_code, url)
+                break
             return r
         except requests.RequestException as e:
             print("retry", k, e)
-            time.sleep(2 ** k)
+            time.sleep(min(2 ** k, 20))
     raise RuntimeError("download failed: " + url)
+
+
+def find_meta():
+    """Return (repo_id, {config: {split: [parquet urls]}}) from the first repo that works."""
+    for repo in REPOS:
+        try:
+            meta = get(f"https://huggingface.co/api/datasets/{repo}/parquet", tries=2).json()
+            if meta:
+                return repo, meta
+        except Exception as e:
+            print("API failed for", repo, e)
+        # direct auto-converted parquet files
+        for cfg in ("default", "species_800"):
+            meta = {cfg: {}}
+            try:
+                for sp in ("train", "test"):
+                    u = f"https://huggingface.co/datasets/{repo}/resolve/refs%2Fconvert%2Fparquet/{cfg}/{sp}/0000.parquet"
+                    get(u, tries=1)
+                    meta[cfg][sp] = [u]
+                return repo, meta
+            except Exception as e:
+                print("direct parquet failed for", repo, cfg, e)
+    raise RuntimeError("could not locate species_800 parquet files")
 
 
 def load_split(meta, split):
@@ -34,9 +63,9 @@ def load_split(meta, split):
     return pd.concat([pd.read_parquet(io.BytesIO(get(u).content)) for u in urls], ignore_index=True)
 
 
-def label_names():
+def label_names(repo):
     try:
-        info = get("https://datasets-server.huggingface.co/info?dataset=species_800").json()
+        info = get(f"https://datasets-server.huggingface.co/info?dataset={repo}", tries=2).json()
         cfg = list(info["dataset_info"].values())[0] if "config_name" not in info["dataset_info"] else info["dataset_info"]
         return [n[0].upper() for n in cfg["features"]["ner_tags"]["feature"]["names"]]
     except Exception as e:
@@ -67,8 +96,8 @@ def prf(gold, pred):
     """Hand-written exact-match entity-level precision/recall/F1 (micro)."""
     tp = fp = fn = 0
     for g, p in zip(gold, pred):
-        G = {(s, e) for s, e in spans(g)}
-        P = {(s, e) for s, e in spans(p)}
+        G = spans(g)
+        P = spans(p)
         tp += len(G & P); fp += len(P - G); fn += len(G - P)
     pr = tp / (tp + fp) if tp + fp else 0.0
     rc = tp / (tp + fn) if tp + fn else 0.0
@@ -132,9 +161,7 @@ def oof_dtags(toks, tags):
 
 def tagger_predict(trt, trg, evt, C):
     """Fit the logistic-regression tagger on (trt, trg), predict BIO tags for evt."""
-    X = [f for t, (dt, _) in zip(trt, oof_dtags(trt, trg)) for f in feats(t, dt, _)]
     D = make_dict(trt, trg)
-    # oof vocab differs per fold; use each fold's vocab for its sentences
     X = []
     for t, (dt, v) in zip(trt, oof_dtags(trt, trg)):
         X += feats(t, dt, v)
@@ -148,8 +175,9 @@ def tagger_predict(trt, trg, evt, C):
 
 
 def main():
-    meta = get(API).json()
-    names = label_names()
+    repo, meta = find_meta()
+    print("using dataset repo:", repo)
+    names = label_names(repo)
     tr, te = load_split(meta, "train"), load_split(meta, "test")
     Xtr, Ytr = to_lists(tr, names)
     Xte, Yte = to_lists(te, names)
@@ -185,7 +213,7 @@ def main():
     res = {
         "question": "Can a lightweight context-aware token classifier with ontology-term features extract organism entities from scientific text better than a plain ontology-term lookup?",
         "method": "species_800 official train/test; 10% of train held out to tune C; dictionary lookup vs logistic-regression BIO tagger; exact-match entity-level F1.",
-        "dataset": {"name": "species_800", "source_url": "https://huggingface.co/datasets/species_800",
+        "dataset": {"name": "species_800", "source_url": "https://huggingface.co/datasets/" + repo,
                     "n_rows": len(Xtr) + len(Xte), "n_train": len(Xtr), "n_test": len(Xte),
                     "same_as_paper": False, "baseline_is_papers_method": False},
         "metric_name": "entity-level exact-match F1", "higher_is_better": True,
@@ -195,7 +223,7 @@ def main():
                     "baseline_f1": bf, "improved_f1": i_f, "baseline_precision": bp, "baseline_recall": br,
                     "improved_precision": ip, "improved_recall": ir, "best_C": bestC,
                     "dev_f1_baseline": dev_base, "dev_f1_improved": dev[bestC]},
-        "notes": "Deterministic models (single run, seed 42). The LLM of the paper is not re-implemented; species_800 (biomedical abstracts) is a stand-in for agricultural text. The ontology list comes from training annotations, so lookup recall is bounded by training vocabulary. Tagger ontology features use out-of-fold dictionaries on training data.",
+        "notes": "Deterministic models (single run, seed 42). The LLM of the paper is not re-implemented; species_800 (biomedical abstracts) is a stand-in for agricultural text. The ontology list comes from training annotations, so lookup recall is bounded by training vocabulary. Tagger ontology features use out-of-fold dictionaries on training data. Data loading fixed: the Hub id 'species_800' returned 401, so namespaced ids are tried.",
     }
     with open("results.json", "w", encoding="utf-8") as f:
         json.dump(res, f, indent=2)
