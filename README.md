@@ -1,13 +1,16 @@
-# species_800: dictionary lookup vs. logistic-regression tagger
+# Light entity extraction vs. ontology lookup (species_800)
 
 Question: can a lightweight context-aware token classifier with ontology-term features extract organism entities from scientific text better than a plain ontology-term lookup?
 
-- Dataset: species_800 (official train/test split), loaded from the Hugging Face Hub as parquet (tries `spyysalo/species_800`, `species_800`, `bigbio/species_800`).
-- Baseline: longest-match dictionary lookup built from training entity strings.
-- Improved: logistic-regression BIO tagger with word, affix, shape, context and ontology-match features; `C` tuned on a 10% held-out part of the training set only.
-- Metric: entity-level exact-match F1 on the test set (higher is better). Seed 42, CPU only.
+- Dataset: species_800 (official train/test split), downloaded from the Hugging Face Hub.
+- Baseline: longest-match dictionary lookup using training entity strings.
+- Improved: logistic-regression BIO tagger (word, affix, shape, context and ontology-match features); C tuned on a 10% held-out part of the training set.
+- Metric: entity-level exact-match F1 on the test set (higher is better).
+- Seed 42, CPU only.
 
 Run `python analysis.py`; it writes `results.json` and `figures/f1.png`.
+
+Fix note: test sentences with zero tokens previously crashed the tagger's vectorizer; they now get empty predictions (the baseline already handled them the same way).
 
 ## Reference
 

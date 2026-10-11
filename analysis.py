@@ -170,6 +170,9 @@ def tagger_predict(trt, trg, evt, C):
     clf = LogisticRegression(C=C, max_iter=300, random_state=SEED).fit(vec.fit_transform(X), y)
     out = []
     for t in evt:
+        if len(t) == 0:  # empty sentence: nothing to tag (DictVectorizer rejects empty input)
+            out.append([])
+            continue
         out.append(list(clf.predict(vec.transform(feats(t, lookup(t, D), D[2])))))
     return out
 
@@ -223,7 +226,7 @@ def main():
                     "baseline_f1": bf, "improved_f1": i_f, "baseline_precision": bp, "baseline_recall": br,
                     "improved_precision": ip, "improved_recall": ir, "best_C": bestC,
                     "dev_f1_baseline": dev_base, "dev_f1_improved": dev[bestC]},
-        "notes": "Deterministic models (single run, seed 42). The LLM of the paper is not re-implemented; species_800 (biomedical abstracts) is a stand-in for agricultural text. The ontology list comes from training annotations, so lookup recall is bounded by training vocabulary. Tagger ontology features use out-of-fold dictionaries on training data. Data loading fixed: the Hub id 'species_800' returned 401, so namespaced ids are tried.",
+        "notes": "Deterministic models (single run, seed 42). The LLM of the paper is not re-implemented; species_800 (biomedical abstracts) is a stand-in for agricultural text. The ontology list comes from training annotations, so lookup recall is bounded by training vocabulary. Tagger ontology features use out-of-fold dictionaries on training data. Data loading fixed: the Hub id 'species_800' returned 401, so namespaced ids are tried. Empty test sentences (zero tokens) are passed through with empty predictions in both models instead of crashing the vectorizer.",
     }
     with open("results.json", "w", encoding="utf-8") as f:
         json.dump(res, f, indent=2)
