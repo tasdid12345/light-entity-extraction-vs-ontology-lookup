@@ -12,6 +12,29 @@ Run `python analysis.py`; it writes `results.json` and `figures/f1.png`.
 
 Fix note: test sentences with zero tokens previously crashed the tagger's vectorizer; they now get empty predictions (the baseline already handled them the same way).
 
+## Results (latest run)
+
+On the species_800 test set, entity-level exact-match F1 was 30% for a standard ontology-term dictionary lookup and 44% for a logistic-regression BIO tagger with ontology-match features, a gain on this biomedical stand-in dataset rather than agricultural text.
+
+| Metric | Value |
+|---|---|
+| baseline_score | 0.3018 |
+| improved_score | 0.4432 |
+| improvement | 0.1414 |
+| baseline_f1 | 0.3018 |
+| improved_f1 | 0.4432 |
+| baseline_precision | 0.2642 |
+| baseline_recall | 0.352 |
+| improved_precision | 0.5436 |
+| improved_recall | 0.3742 |
+| best_C | 0.1 |
+| dev_f1_baseline | 0.5589 |
+| dev_f1_improved | 0.752 |
+
+Run on 2026-10-11. Full output: [results.json](results.json) · [run.log](run.log)
+
+Notes: Deterministic models (single run, seed 42). The LLM of the paper is not re-implemented; species_800 (biomedical abstracts) is a stand-in for agricultural text. The ontology list comes from training annotations, so lookup recall is bounded by training vocabulary. Tagger ontology features use out-of-fold dictionaries on training data. Data loading fixed: the Hub id 'species_800' returned 401, so namespaced ids are tried. Empty test sentences (zero tokens) are passed through with empty predictions in both models instead of crashing the vectorizer.
+
 ## Reference
 
 This project is motivated by the following paper:
