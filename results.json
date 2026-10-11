@@ -1,0 +1,32 @@
+{
+  "question": "Can a lightweight context-aware token classifier with ontology-term features extract organism entities from scientific text better than a plain ontology-term lookup?",
+  "method": "species_800 official train/test; 10% of train held out to tune C; dictionary lookup vs logistic-regression BIO tagger; exact-match entity-level F1.",
+  "dataset": {
+    "name": "species_800",
+    "source_url": "https://huggingface.co/datasets/spyysalo/species_800",
+    "n_rows": 7365,
+    "n_train": 5734,
+    "n_test": 1631,
+    "same_as_paper": false,
+    "baseline_is_papers_method": false
+  },
+  "metric_name": "entity-level exact-match F1",
+  "higher_is_better": true,
+  "baseline": "Longest-match dictionary lookup using training entity strings as the ontology list.",
+  "improved": "Logistic-regression BIO tagger with word, suffix, shape, context and ontology-match features; C tuned on held-out 10% of train.",
+  "metrics": {
+    "baseline_score": 0.3018446059250979,
+    "improved_score": 0.4432432432432432,
+    "improvement": 0.14139863731814534,
+    "baseline_f1": 0.3018446059250979,
+    "improved_f1": 0.4432432432432432,
+    "baseline_precision": 0.26418786692759294,
+    "baseline_recall": 0.3520208604954368,
+    "improved_precision": 0.5435606060606061,
+    "improved_recall": 0.3741851368970013,
+    "best_C": 0.1,
+    "dev_f1_baseline": 0.5589123867069486,
+    "dev_f1_improved": 0.7519685039370079
+  },
+  "notes": "Deterministic models (single run, seed 42). The LLM of the paper is not re-implemented; species_800 (biomedical abstracts) is a stand-in for agricultural text. The ontology list comes from training annotations, so lookup recall is bounded by training vocabulary. Tagger ontology features use out-of-fold dictionaries on training data. Data loading fixed: the Hub id 'species_800' returned 401, so namespaced ids are tried. Empty test sentences (zero tokens) are passed through with empty predictions in both models instead of crashing the vectorizer."
+}
